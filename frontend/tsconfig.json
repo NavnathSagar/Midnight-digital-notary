@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowJs": false,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "isolatedModules": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["vite/client", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@notary-contract/*": ["../contracts/*"],
+      "@midnight-ntwrk/midnight-js-protocol/compact-js": ["./node_modules/@midnight-ntwrk/midnight-js-protocol/dist/compact-js.d.mts"],
+      "@midnight-ntwrk/midnight-js-protocol/compact-runtime": ["./node_modules/@midnight-ntwrk/midnight-js-protocol/dist/compact-runtime.d.mts"],
+      "@midnight-ntwrk/midnight-js-protocol/ledger": ["./node_modules/@midnight-ntwrk/midnight-js-protocol/dist/ledger.d.mts"],
+      "@midnight-ntwrk/compact-runtime": ["./node_modules/@midnight-ntwrk/compact-runtime/dist/index.d.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts", "scripts"]
+}
