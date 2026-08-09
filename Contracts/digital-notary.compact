@@ -1,0 +1,151 @@
+pragma language_version >= 0.16;
+import CompactStandardLibrary;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Digital Notary — a privacy-preserving contract notarization platform
+//
+// PUBLIC (on-chain, visible to every observer):
+//   - documentCount: how many documents have been notarized in total
+//   - per-document record keyed by its sequential id:
+//       * docCommitments[id]:   a Pedersen-style commitment (persistentCommit)
+//                               binding the document's content hash to a fresh
+//                               nonce. It hides BOTH the content and the nonce.
+//       * ownerCommitments[id]: an anonymous commitment (persistentHash) of the
+//                               registrant's owner secret. It proves WHO may
+//                               disclose/revoke without revealing who that is.
+//       * statuses[id]:         registered -> disclosed -> revoked
+//       * publicFingerprints[id]: the document's content hash, ONLY after the
+//                               owner deliberately discloses it (opt-in).
+//       * witnessSeals[id]:     an anonymous seal from an independent witness
+//                               who attests the public fingerprint.
+//
+// PRIVATE (witness / never leaves the user's wallet):
+//   - contentHash: the hash of the notarized file. Produced locally in the
+//     browser, used only as a circuit witness, and DROPPED after proof.
+//   - docNonce: the fresh randomness that created the on-chain commitment.
+//     Without it nobody can recompute the commitment, so the record cannot be
+//     linked back to any particular file.
+//   - ownerSecret: the registrant's secret. Only its commitment is public.
+//   - sealNonce: fresh randomness per attestation, used to build the anonymous
+//     witness seal (a Pedersen commitment to the public fingerprint).
+//
+// An on-chain observer can therefore see THAT documents were notarized, in
+// what order, their current status, and (once the owner opts in) their public
+// content fingerprint and anonymous witness seals — but CANNOT see the
+// document's content, who registered it, or who attested it.
+//
+// disclose() is used deliberately and only where the notary must be auditable:
+// the document id/counter, the disclosed content fingerprint (an opt-in act by
+// the owner so third parties can locally verify a file against the chain), and
+// the witness seal. Private inputs are never logged, emitted, or placed in any
+// transaction argument or return value.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export enum DocStatus {
+  registered,
+  disclosed,
+  revoked,
+}
+
+export ledger documentCount: Uint<64>;
+export ledger docCommitments: Map<Uint<64>, Bytes<32>>;
+export ledger ownerCommitments: Map<Uint<64>, Bytes<32>>;
+export ledger statuses: Map<Uint<64>, DocStatus>;
+export ledger publicFingerprints: Map<Uint<64>, Bytes<32>>;
+export ledger witnessSeals: Map<Uint<64>, Bytes<32>>;
+
+// Witnesses read their values exclusively from the private state held in the
+// user's wallet. They are used to build the proof and are never revealed.
+witness freshContentHash(): Bytes<32>;
+witness freshDocNonce(): Bytes<32>;
+witness ownerSecret(): Bytes<32>;
+witness contentSecret(id: Uint<64>): Bytes<32>;
+witness docNonce(id: Uint<64>): Bytes<32>;
+witness sealNonce(): Bytes<32>;
+
+constructor() {
+  documentCount = disclose(0);
+}
+
+// ─── 1. register: notarize a new document ────────────────────────────────────
+// No transaction argument carries the content: the content hash and the fresh
+// nonce are read from the private witness and combined into a commitment that
+// is the only thing that lands on-chain. Returns the new public document id.
+export circuit register(): Uint<64> {
+  const contentHash: Bytes<32> = freshContentHash();
+  const nonce: Bytes<32> = freshDocNonce();
+  const commitment: Bytes<32> = persistentCommit<Vector<2, Bytes<32>>>([
+    pad(32, "digital-notary:doc"),
+    contentHash,
+  ], nonce);
+  assert(!docCommitments.member(documentCount), "Document id collision");
+  docCommitments.insert(documentCount, commitment);
+  ownerCommitments.insert(documentCount, disclose(persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "digital-notary:owner"),
+    ownerSecret(),
+  ])));
+  statuses.insert(documentCount, DocStatus.registered);
+  const id: Uint<64> = disclose(documentCount);
+  documentCount = disclose((documentCount + 1) as Uint<64>);
+  return id;
+}
+
+// ─── 2. discloseDocument: publish the content fingerprint (opt-in) ──────────
+// The owner proves, in zero knowledge, that they registered this document and
+// that the commitment matches the content hash they hold — then deliberately
+// discloses the fingerprint so third parties can verify any file against the
+// chain. The content hash is cryptographic: publishing it does NOT reveal the
+// document's contents, only its verifiable fingerprint.
+export circuit discloseDocument(id: Uint<64>): Bytes<32> {
+  const pid: Uint<64> = disclose(id);
+  assert(ownerCommitments.member(pid), "Document not registered");
+  assert(persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "digital-notary:owner"),
+    ownerSecret(),
+  ]) == ownerCommitments.lookup(pid), "Only the registering owner can disclose a document");
+  assert(statuses.lookup(pid) != DocStatus.revoked, "Document has been revoked");
+  const contentHash: Bytes<32> = contentSecret(pid);
+  const nonce: Bytes<32> = docNonce(pid);
+  assert(persistentCommit<Vector<2, Bytes<32>>>([
+    pad(32, "digital-notary:doc"),
+    contentHash,
+  ], nonce) == docCommitments.lookup(pid), "Content hash does not match the registered commitment");
+  const publicHash: Bytes<32> = disclose(contentHash);
+  publicFingerprints.insert(pid, publicHash);
+  statuses.insert(pid, DocStatus.disclosed);
+  return publicHash;
+}
+
+// ─── 3. attest: an independent witness seals the public fingerprint ──────────
+// A witness who observed a public document creates an anonymous seal binding
+// their fresh secret to the fingerprint. Their identity stays hidden; only the
+// seal commitment is stored. One seal per document id.
+export circuit attest(id: Uint<64>): [] {
+  const pid: Uint<64> = disclose(id);
+  assert(publicFingerprints.member(pid), "Document fingerprint is not public — the owner must disclose it first");
+  assert(statuses.lookup(pid) != DocStatus.revoked, "Document has been revoked");
+  const fingerprint: Bytes<32> = publicFingerprints.lookup(pid);
+  const seal: Bytes<32> = persistentCommit<Vector<2, Bytes<32>>>([
+    pad(32, "digital-notary:seal"),
+    fingerprint,
+  ], sealNonce());
+  disclose(seal);
+  witnessSeals.insert(pid, seal);
+}
+
+// ─── 4. revoke: the owner retracts a document ────────────────────────────────
+// Only the holder of the matching owner secret can revoke. Revoking also
+// removes the public fingerprint, so the document can no longer be verified.
+export circuit revoke(id: Uint<64>): [] {
+  const pid: Uint<64> = disclose(id);
+  assert(ownerCommitments.member(pid), "Document not registered");
+  assert(persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "digital-notary:owner"),
+    ownerSecret(),
+  ]) == ownerCommitments.lookup(pid), "Only the registering owner can revoke a document");
+  assert(statuses.lookup(pid) != DocStatus.revoked, "Document already revoked");
+  if (publicFingerprints.member(pid)) {
+    publicFingerprints.remove(pid);
+  }
+  statuses.insert(pid, DocStatus.revoked);
+}
