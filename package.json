@@ -1,0 +1,64 @@
+{
+  "name": "midnight-digital-notary",
+  "version": "0.1.0",
+  "description": "A privacy-preserving digital notary dApp built on the Midnight Network (Compact)",
+  "author": "INTO the Midnight - SPPU",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.11.1"
+  },
+  "scripts": {
+    "compile": "compact compile contracts/digital-notary.compact contracts/managed/digital-notary",
+    "build": "npx tsc --noEmit || true",
+    "setup": "npx tsx src/setup.ts",
+    "deploy": "npx tsx src/deploy.ts",
+    "cli": "npx tsx src/cli.ts",
+    "network": "npx tsx src/network.ts",
+    "smoke": "npx tsx scripts/smoke-read-state.ts",
+    "proof-server:start": "docker compose up -d",
+    "proof-server:stop": "docker compose down",
+    "clean": "rm -rf contracts/managed .midnight-state.json .midnight-wallet-state",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "frontend:install": "npm --prefix frontend install",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "4.1.1",
+    "@midnight-ntwrk/midnight-js-utils": "4.1.1",
+    "@midnight-ntwrk/wallet-sdk": "1.2.0",
+    "rxjs": "^7.8.2",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "keywords": [
+    "midnight",
+    "blockchain",
+    "zero-knowledge",
+    "privacy",
+    "notary",
+    "compact"
+  ],
+  "allowScripts": {
+    "classic-level@3.0.0": true,
+    "msgpackr-extract@3.0.4": true,
+    "esbuild@0.28.1": true
+  }
+}
